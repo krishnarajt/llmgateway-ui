@@ -10,11 +10,33 @@ import SectionHeader from "./SectionHeader";
 import Modal from "./Modal";
 import Icon from "./Icons";
 
+const PROVIDER_TYPES = [
+  { value: "openai", label: "OpenAI", name: "openai", displayName: "OpenAI", baseUrl: "https://api.openai.com/v1" },
+  { value: "gemini", label: "Gemini", name: "gemini", displayName: "Google Gemini", baseUrl: "https://generativelanguage.googleapis.com" },
+  { value: "ollama", label: "Ollama", name: "ollama", displayName: "Ollama (Local)", baseUrl: "http://localhost:11434" },
+  { value: "groq", label: "Groq", name: "groq", displayName: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
+  { value: "huggingface", label: "Hugging Face", name: "huggingface", displayName: "Hugging Face", baseUrl: "https://router.huggingface.co/v1" },
+];
+
+const defaultProviderForm = (providerType = "openai") => {
+  const option = PROVIDER_TYPES.find((item) => item.value === providerType) || PROVIDER_TYPES[0];
+  return {
+    name: option.name,
+    display_name: option.displayName,
+    base_url: option.baseUrl,
+    provider_type: option.value,
+  };
+};
+
+const emptyProviderForm = { name: "", display_name: "", base_url: "", provider_type: "openai" };
+
+const isDefaultProviderValue = (field, value) => PROVIDER_TYPES.some((option) => option[field] === value);
+
 export default function ProvidersPage({ token, toast }) {
   const [providers, setProviders] = useState([]);
   const [keys, setKeys] = useState({});
   const [modal, setModal] = useState(null); // null | "provider"
-  const [provForm, setProvForm] = useState({ name: "", display_name: "", base_url: "", provider_type: "openai" });
+  const [provForm, setProvForm] = useState(emptyProviderForm);
 
   const load = useCallback(async () => {
     try {
@@ -37,10 +59,22 @@ export default function ProvidersPage({ token, toast }) {
       await api("/admin/providers", { method: "POST", body: provForm, token });
       toast.show("Provider created", "success");
       setModal(null);
+      setProvForm(emptyProviderForm);
       load();
     } catch (e) {
       toast.show(e.message, "error");
     }
+  };
+
+  const setProviderType = (providerType) => {
+    const defaults = defaultProviderForm(providerType);
+    setProvForm((current) => ({
+      ...current,
+      provider_type: defaults.provider_type,
+      name: !current.name || isDefaultProviderValue("name", current.name) ? defaults.name : current.name,
+      display_name: !current.display_name || isDefaultProviderValue("displayName", current.display_name) ? defaults.display_name : current.display_name,
+      base_url: !current.base_url || isDefaultProviderValue("baseUrl", current.base_url) ? defaults.base_url : current.base_url,
+    }));
   };
 
   const deleteKey = async (id) => {
@@ -140,13 +174,13 @@ export default function ProvidersPage({ token, toast }) {
       {/* Add Provider Modal */}
       <Modal open={modal === "provider"} onClose={() => setModal(null)} title="ADD PROVIDER">
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <input className="input" placeholder="Name (e.g. openai)" value={provForm.name} onChange={(e) => setProvForm({ ...provForm, name: e.target.value })} />
+          <input className="input" placeholder="Name (e.g. groq)" value={provForm.name} onChange={(e) => setProvForm({ ...provForm, name: e.target.value })} />
           <input className="input" placeholder="Display Name" value={provForm.display_name} onChange={(e) => setProvForm({ ...provForm, display_name: e.target.value })} />
           <input className="input" placeholder="Base URL" value={provForm.base_url} onChange={(e) => setProvForm({ ...provForm, base_url: e.target.value })} />
-          <select className="input" value={provForm.provider_type} onChange={(e) => setProvForm({ ...provForm, provider_type: e.target.value })}>
-            <option value="openai">OpenAI</option>
-            <option value="gemini">Gemini</option>
-            <option value="ollama">Ollama</option>
+          <select className="input" value={provForm.provider_type} onChange={(e) => setProviderType(e.target.value)}>
+            {PROVIDER_TYPES.map((providerType) => (
+              <option key={providerType.value} value={providerType.value}>{providerType.label}</option>
+            ))}
           </select>
           <button className="btn btn-fill-cyan" onClick={createProvider} style={{ justifyContent: "center" }}>
             CREATE

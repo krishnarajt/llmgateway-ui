@@ -116,7 +116,7 @@ export default function ModelsPage({ token, role, toast }) {
             <option value="">Select Provider</option>
             {providers.map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}
           </select>
-          <input className="input" placeholder="Model ID (e.g. gpt-4o)" value={form.model_id} onChange={(e) => setForm({ ...form, model_id: e.target.value })} />
+          <input className="input" placeholder="Model ID (e.g. llama-3.3-70b-versatile)" value={form.model_id} onChange={(e) => setForm({ ...form, model_id: e.target.value })} />
           <input className="input" placeholder="Display Name" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
           <input className="input" placeholder="Max Context Tokens (optional)" type="number" value={form.max_context_tokens} onChange={(e) => setForm({ ...form, max_context_tokens: e.target.value })} />
           <button className="btn btn-fill-cyan" onClick={create} style={{ justifyContent: "center" }}>

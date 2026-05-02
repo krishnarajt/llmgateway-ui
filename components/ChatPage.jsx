@@ -16,6 +16,7 @@ export default function ChatPage({ toast }) {
   const [message, setMessage] = useState("");
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [thinking, setThinking] = useState(false);
 
   const send = async () => {
     if (!gwKey || !model || !message) {
@@ -27,7 +28,11 @@ export default function ChatPage({ toast }) {
     try {
       const data = await api("/chat", {
         method: "POST",
-        body: { system_prompt: system || null, user_prompt: message, config: { model } },
+        body: {
+          system_prompt: system || null,
+          user_prompt: message,
+          config: { model, thinking },
+        },
         apiKey: gwKey,
       });
       setResponse(data);
@@ -54,8 +59,20 @@ export default function ChatPage({ toast }) {
           <label style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
             MODEL
           </label>
-          <input className="input" placeholder="gpt-4o / gemini-1.5-pro / llama3:8b" value={model} onChange={(e) => setModel(e.target.value)} />
+          <input
+            className="input"
+            placeholder="gpt-4o / llama-3.3-70b-versatile / deepseek-ai/DeepSeek-R1:fastest"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+          />
         </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <button className={`btn btn-sm ${thinking ? "btn-magenta" : ""}`} onClick={() => setThinking((value) => !value)}>
+          <Icon name={thinking ? "toggleOn" : "toggleOff"} size={16} />
+          THINKING {thinking ? "ON" : "OFF"}
+        </button>
       </div>
 
       <div style={{ marginBottom: 16 }}>
@@ -119,6 +136,36 @@ export default function ChatPage({ toast }) {
             >
               {response.error || response.content}
             </pre>
+            {response.thinking && !response.error && (
+              <>
+                <div
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    fontSize: 12,
+                    letterSpacing: 1.5,
+                    margin: "16px 0 12px",
+                    color: "var(--magenta)",
+                  }}
+                >
+                  // THINKING
+                </div>
+                <pre
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 13,
+                    color: "var(--text-secondary)",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    lineHeight: 1.6,
+                    background: "rgba(0,0,0,0.3)",
+                    padding: 16,
+                    borderRadius: 4,
+                  }}
+                >
+                  {response.thinking}
+                </pre>
+              </>
+            )}
             {response.usage && (
               <div style={{ marginTop: 12, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>
                 Tokens: {JSON.stringify(response.usage)}
