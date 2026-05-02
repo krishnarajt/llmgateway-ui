@@ -12,15 +12,19 @@ export default function Sidebar({ role, activePage, setPage, onLogout, username 
     { id: "dashboard", label: "OVERVIEW", icon: "dashboard" },
     { id: "users", label: "USERS", icon: "users" },
     { id: "providers", label: "PROVIDERS", icon: "server" },
+    { id: "provider-keys", label: "API ROUTING", icon: "route" },
     { id: "models", label: "MODELS", icon: "model" },
     { id: "env-vars", label: "ENV VARS", icon: "lock" },
     { id: "perm-requests", label: "REQUESTS", icon: "shield" },
+    { id: "my-keys", label: "API KEYS", icon: "key" },
+    { id: "multiplexing", label: "MULTIPLEX", icon: "route" },
   ];
 
   // User navigation items
   const userItems = [
     { id: "dashboard", label: "OVERVIEW", icon: "dashboard" },
     { id: "my-keys", label: "API KEYS", icon: "key" },
+    { id: "multiplexing", label: "MULTIPLEX", icon: "route" },
     { id: "my-requests", label: "REQUESTS", icon: "shield" },
     { id: "models", label: "MODELS", icon: "model" },
   ];

@@ -13,9 +13,8 @@ import Icon from "./Icons";
 export default function ProvidersPage({ token, toast }) {
   const [providers, setProviders] = useState([]);
   const [keys, setKeys] = useState({});
-  const [modal, setModal] = useState(null); // null | "provider" | "key"
+  const [modal, setModal] = useState(null); // null | "provider"
   const [provForm, setProvForm] = useState({ name: "", display_name: "", base_url: "", provider_type: "openai" });
-  const [keyForm, setKeyForm] = useState({ provider_id: "", label: "default", api_key: "" });
 
   const load = useCallback(async () => {
     try {
@@ -37,17 +36,6 @@ export default function ProvidersPage({ token, toast }) {
     try {
       await api("/admin/providers", { method: "POST", body: provForm, token });
       toast.show("Provider created", "success");
-      setModal(null);
-      load();
-    } catch (e) {
-      toast.show(e.message, "error");
-    }
-  };
-
-  const addKey = async () => {
-    try {
-      await api("/admin/provider-api-keys", { method: "POST", body: keyForm, token });
-      toast.show("API key added", "success");
       setModal(null);
       load();
     } catch (e) {
@@ -81,20 +69,9 @@ export default function ProvidersPage({ token, toast }) {
         title="PROVIDERS"
         subtitle={`// ${providers.length} configured`}
         action={
-          <div style={{ display: "flex", gap: 10 }}>
-            <button className="btn btn-cyan" onClick={() => setModal("provider")}>
-              <Icon name="plus" size={14} /> PROVIDER
-            </button>
-            <button
-              className="btn btn-magenta"
-              onClick={() => {
-                setKeyForm({ provider_id: providers[0]?.id || "", label: "default", api_key: "" });
-                setModal("key");
-              }}
-            >
-              <Icon name="key" size={14} /> ADD KEY
-            </button>
-          </div>
+          <button className="btn btn-cyan" onClick={() => setModal("provider")}>
+            <Icon name="plus" size={14} /> PROVIDER
+          </button>
         }
       />
 
@@ -140,7 +117,12 @@ export default function ProvidersPage({ token, toast }) {
                   }}
                 >
                   <div>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-primary)" }}>{k.label}</span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-primary)" }}>
+                      {k.order_index === 0 ? "primary" : `fallback ${k.order_index}`} / {k.env_var_key || k.label}
+                    </span>
+                    <span className={`badge ${k.source === "env_var" ? "badge-cyan" : "badge-magenta"}`} style={{ marginLeft: 8 }}>
+                      {k.source}
+                    </span>
                     <span className={`badge ${k.is_active ? "badge-green" : "badge-red"}`} style={{ marginLeft: 8 }}>
                       {k.is_active ? "active" : "disabled"}
                     </span>
@@ -168,23 +150,6 @@ export default function ProvidersPage({ token, toast }) {
           </select>
           <button className="btn btn-fill-cyan" onClick={createProvider} style={{ justifyContent: "center" }}>
             CREATE
-          </button>
-        </div>
-      </Modal>
-
-      {/* Add Key Modal */}
-      <Modal open={modal === "key"} onClose={() => setModal(null)} title="ADD PROVIDER API KEY">
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <select className="input" value={keyForm.provider_id} onChange={(e) => setKeyForm({ ...keyForm, provider_id: parseInt(e.target.value) })}>
-            <option value="">Select Provider</option>
-            {providers.map((p) => (
-              <option key={p.id} value={p.id}>{p.display_name}</option>
-            ))}
-          </select>
-          <input className="input" placeholder="Label" value={keyForm.label} onChange={(e) => setKeyForm({ ...keyForm, label: e.target.value })} />
-          <input className="input" placeholder="API Key (will be encrypted)" value={keyForm.api_key} onChange={(e) => setKeyForm({ ...keyForm, api_key: e.target.value })} />
-          <button className="btn btn-fill-cyan" onClick={addKey} style={{ justifyContent: "center" }}>
-            ENCRYPT & STORE
           </button>
         </div>
       </Modal>

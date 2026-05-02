@@ -22,6 +22,12 @@ import {
   Copy,
   Send,
   RefreshCw,
+  GitBranch,
+  ArrowUp,
+  ArrowDown,
+  Save,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 
 // Map icon names to lucide components for easy lookup
@@ -44,6 +50,12 @@ export const IconMap = {
   copy: Copy,
   send: Send,
   refresh: RefreshCw,
+  route: GitBranch,
+  up: ArrowUp,
+  down: ArrowDown,
+  save: Save,
+  toggleOff: ToggleLeft,
+  toggleOn: ToggleRight,
 };
 
 /**

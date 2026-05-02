@@ -14,11 +14,13 @@ import Sidebar from "@/components/Sidebar";
 import DashboardPage from "@/components/DashboardPage";
 import UsersPage from "@/components/UsersPage";
 import ProvidersPage from "@/components/ProvidersPage";
+import ProviderKeyRoutingPage from "@/components/ProviderKeyRoutingPage";
 import ModelsPage from "@/components/ModelsPage";
 import EnvVarsPage from "@/components/EnvVarsPage";
 import AdminPermRequestsPage from "@/components/AdminPermRequestsPage";
 import MyKeysPage from "@/components/MyKeysPage";
 import MyRequestsPage from "@/components/MyRequestsPage";
+import MultiplexingPage from "@/components/MultiplexingPage";
 import ChatPage from "@/components/ChatPage";
 import SettingsPage from "@/components/SettingsPage";
 
@@ -73,6 +75,8 @@ export default function Home() {
         return role === "admin" ? <UsersPage token={token} toast={toastObj} /> : null;
       case "providers":
         return role === "admin" ? <ProvidersPage token={token} toast={toastObj} /> : null;
+      case "provider-keys":
+        return role === "admin" ? <ProviderKeyRoutingPage token={token} toast={toastObj} /> : null;
       case "models":
         return <ModelsPage token={token} role={role} toast={toastObj} />;
       case "env-vars":
@@ -81,6 +85,8 @@ export default function Home() {
         return role === "admin" ? <AdminPermRequestsPage token={token} toast={toastObj} /> : null;
       case "my-keys":
         return <MyKeysPage token={token} toast={toastObj} />;
+      case "multiplexing":
+        return <MultiplexingPage token={token} toast={toastObj} />;
       case "my-requests":
         return <MyRequestsPage token={token} toast={toastObj} />;
       case "chat":
