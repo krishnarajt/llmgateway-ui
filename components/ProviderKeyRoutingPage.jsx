@@ -16,35 +16,68 @@ const providerDraft = (keys) => {
   };
 };
 
+const rateLimitKey = (providerApiKeyId, modelId) => `${providerApiKeyId}:${modelId}`;
+
+const rateLimitDraftFromRow = (row) => ({
+  rpm_limit: row?.rpm_limit ? String(row.rpm_limit) : "",
+  rph_limit: row?.rph_limit ? String(row.rph_limit) : "",
+  rpd_limit: row?.rpd_limit ? String(row.rpd_limit) : "",
+});
+
+const normalizeLimitValue = (value) => {
+  const parsed = parseInt(String(value || "").trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
 const envLabel = (envVar) => {
   if (!envVar) return "Unknown env key";
   return envVar.description ? `${envVar.key} - ${envVar.description}` : envVar.key;
 };
 
+const sourceKeyLabel = (key) => key.env_var_key || key.label || `source-key-${key.id}`;
+
 export default function ProviderKeyRoutingPage({ token, toast }) {
   const [providers, setProviders] = useState([]);
   const [envVars, setEnvVars] = useState([]);
+  const [models, setModels] = useState([]);
   const [keysByProvider, setKeysByProvider] = useState({});
+  const [rateLimits, setRateLimits] = useState({});
   const [drafts, setDrafts] = useState({});
+  const [rateLimitDrafts, setRateLimitDrafts] = useState({});
   const [savingProviderId, setSavingProviderId] = useState("");
+  const [savingRateLimitKey, setSavingRateLimitKey] = useState("");
 
   const load = useCallback(async () => {
     try {
-      const [providerData, envVarData] = await Promise.all([
+      const [providerData, envVarData, modelData, rateLimitData] = await Promise.all([
         api("/admin/providers", { token }),
         api("/admin/env-vars", { token }),
+        api("/admin/models", { token }),
+        api("/admin/provider-key-model-rate-limits", { token }),
       ]);
-      const keyMap = {};
-      for (const provider of providerData) {
-        keyMap[provider.id] = await api(`/admin/provider-api-keys/${provider.id}`, { token });
-      }
+      const keyEntries = await Promise.all(providerData.map(async (provider) => [
+        provider.id,
+        await api(`/admin/provider-api-keys/${provider.id}`, { token }),
+      ]));
+      const keyMap = Object.fromEntries(keyEntries);
+      const rateLimitMap = Object.fromEntries(
+        rateLimitData.map((row) => [rateLimitKey(row.provider_api_key_id, row.model_id), row])
+      );
       setProviders(providerData);
       setEnvVars(envVarData);
+      setModels(modelData);
       setKeysByProvider(keyMap);
+      setRateLimits(rateLimitMap);
       setDrafts(Object.fromEntries(providerData.map((provider) => [
         provider.id,
         providerDraft(keyMap[provider.id]),
       ])));
+      setRateLimitDrafts(Object.fromEntries(
+        rateLimitData.map((row) => [
+          rateLimitKey(row.provider_api_key_id, row.model_id),
+          rateLimitDraftFromRow(row),
+        ])
+      ));
     } catch (e) {
       toast.show(e.message, "error");
     }
@@ -57,15 +90,25 @@ export default function ProviderKeyRoutingPage({ token, toast }) {
     [envVars]
   );
 
+  const modelsByProvider = useMemo(() => {
+    return models.reduce((acc, model) => {
+      const providerModels = acc[model.provider_id] || [];
+      providerModels.push(model);
+      return { ...acc, [model.provider_id]: providerModels };
+    }, {});
+  }, [models]);
+
   const stats = useMemo(() => {
     const allKeys = Object.values(keysByProvider).flat();
+    const limitRows = Object.values(rateLimits);
     return {
       providers: providers.length,
       envVars: envVars.length,
       dbKeys: allKeys.filter((key) => key.source === "env_var").length,
       legacyKeys: allKeys.filter((key) => key.source === "direct").length,
+      limitedRoutes: limitRows.filter((row) => row.rpm_limit || row.rph_limit || row.rpd_limit).length,
     };
-  }, [providers, envVars, keysByProvider]);
+  }, [providers, envVars, keysByProvider, rateLimits]);
 
   const updateDraft = (providerId, updater) => {
     setDrafts((current) => {
@@ -90,6 +133,16 @@ export default function ProviderKeyRoutingPage({ token, toast }) {
       });
       setKeysByProvider((current) => ({ ...current, [providerId]: saved }));
       setDrafts((current) => ({ ...current, [providerId]: providerDraft(saved) }));
+      const rateLimitData = await api("/admin/provider-key-model-rate-limits", { token });
+      setRateLimits(Object.fromEntries(
+        rateLimitData.map((row) => [rateLimitKey(row.provider_api_key_id, row.model_id), row])
+      ));
+      setRateLimitDrafts(Object.fromEntries(
+        rateLimitData.map((row) => [
+          rateLimitKey(row.provider_api_key_id, row.model_id),
+          rateLimitDraftFromRow(row),
+        ])
+      ));
       toast.show("Provider key route saved", "success");
     } catch (e) {
       toast.show(e.message, "error");
@@ -119,6 +172,53 @@ export default function ProviderKeyRoutingPage({ token, toast }) {
     });
   };
 
+  const getRateLimitDraft = (providerApiKeyId, modelId) => {
+    const key = rateLimitKey(providerApiKeyId, modelId);
+    return rateLimitDrafts[key] || rateLimitDraftFromRow(rateLimits[key]);
+  };
+
+  const updateRateLimitDraft = (providerApiKeyId, modelId, field, value) => {
+    const key = rateLimitKey(providerApiKeyId, modelId);
+    setRateLimitDrafts((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] || rateLimitDraftFromRow(rateLimits[key])),
+        [field]: value,
+      },
+    }));
+  };
+
+  const rateLimitIsDirty = (providerApiKeyId, modelId) => {
+    const key = rateLimitKey(providerApiKeyId, modelId);
+    const saved = rateLimitDraftFromRow(rateLimits[key]);
+    const draft = getRateLimitDraft(providerApiKeyId, modelId);
+    return JSON.stringify(saved) !== JSON.stringify(draft);
+  };
+
+  const saveRateLimit = async (providerApiKeyId, modelId) => {
+    const key = rateLimitKey(providerApiKeyId, modelId);
+    const draft = getRateLimitDraft(providerApiKeyId, modelId);
+    setSavingRateLimitKey(key);
+    try {
+      const saved = await api(`/admin/provider-api-keys/${providerApiKeyId}/models/${modelId}/rate-limit`, {
+        method: "PUT",
+        body: {
+          rpm_limit: normalizeLimitValue(draft.rpm_limit),
+          rph_limit: normalizeLimitValue(draft.rph_limit),
+          rpd_limit: normalizeLimitValue(draft.rpd_limit),
+        },
+        token,
+      });
+      setRateLimits((current) => ({ ...current, [key]: saved }));
+      setRateLimitDrafts((current) => ({ ...current, [key]: rateLimitDraftFromRow(saved) }));
+      toast.show("Rate limit saved", "success");
+    } catch (e) {
+      toast.show(e.message, "error");
+    } finally {
+      setSavingRateLimitKey("");
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
       <SectionHeader title="PROVIDER KEYS" subtitle="// db env vars drive provider key fallback order" />
@@ -129,6 +229,7 @@ export default function ProviderKeyRoutingPage({ token, toast }) {
           ["ENV KEYS", stats.envVars],
           ["DB ROUTES", stats.dbKeys],
           ["LEGACY DIRECT", stats.legacyKeys],
+          ["LIMITED", stats.limitedRoutes],
         ].map(([label, value]) => (
           <div key={label} className="card" style={{ padding: 16 }}>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", letterSpacing: 1 }}>
@@ -155,6 +256,7 @@ export default function ProviderKeyRoutingPage({ token, toast }) {
         const legacyKeys = keys.filter((key) => key.source === "direct");
         const configuredCount = (draft.primary_env_var_id ? 1 : 0) + draft.fallback_env_var_ids.length;
         const options = fallbackOptions(draft);
+        const providerModels = modelsByProvider[providerId] || [];
 
         return (
           <motion.div
@@ -274,6 +376,128 @@ export default function ProviderKeyRoutingPage({ token, toast }) {
                 </span>
               )}
             </div>
+
+            {keys.length > 0 && providerModels.length > 0 && (
+              <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <Icon name="model" size={14} className="text-[#00f0ff]" />
+                  <span style={{ fontFamily: "var(--font-display)", fontSize: 12, color: "var(--text-primary)", letterSpacing: 1 }}>
+                    MODEL RATE LIMITS
+                  </span>
+                  <span className="badge badge-yellow">95% exhaustion</span>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  {keys.map((sourceKey) => (
+                    <div
+                      key={`rate-limits-${sourceKey.id}`}
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: 12,
+                        background: "rgba(255,255,255,0.02)",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontFamily: "var(--font-display)", fontSize: 12, color: "var(--cyan)", letterSpacing: 1 }}>
+                          {sourceKeyLabel(sourceKey)}
+                        </span>
+                        <span className={sourceKey.order_index === 0 ? "badge badge-green" : "badge badge-cyan"}>
+                          {sourceKey.order_index === 0 ? "primary" : `fallback ${sourceKey.order_index}`}
+                        </span>
+                        <span className={`badge ${sourceKey.is_active ? "badge-green" : "badge-red"}`}>
+                          {sourceKey.is_active ? "active" : "disabled"}
+                        </span>
+                      </div>
+
+                      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                        {providerModels.map((model) => {
+                          const pairKey = rateLimitKey(sourceKey.id, model.id);
+                          const draftLimit = getRateLimitDraft(sourceKey.id, model.id);
+                          const savedLimit = rateLimits[pairKey];
+                          const dirtyLimit = rateLimitIsDirty(sourceKey.id, model.id);
+                          const counts = savedLimit
+                            ? `${savedLimit.rpm_count}/${savedLimit.rph_count}/${savedLimit.rpd_count}`
+                            : "0/0/0";
+                          const lastCalled = savedLimit?.last_called_at
+                            ? new Date(savedLimit.last_called_at).toLocaleString()
+                            : "never";
+
+                          return (
+                            <div
+                              key={`${sourceKey.id}:${model.id}`}
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
+                                gap: 8,
+                                alignItems: "center",
+                                paddingTop: 8,
+                                borderTop: "1px solid rgba(255,255,255,0.08)",
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontFamily: "var(--font-display)", fontSize: 11, color: "var(--text-primary)", letterSpacing: 1 }}>
+                                  {model.display_name}
+                                </div>
+                                <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {model.model_id}
+                                </div>
+                              </div>
+
+                              <input
+                                className="input"
+                                type="number"
+                                min="1"
+                                placeholder="RPM"
+                                value={draftLimit.rpm_limit}
+                                onChange={(e) => updateRateLimitDraft(sourceKey.id, model.id, "rpm_limit", e.target.value)}
+                              />
+                              <input
+                                className="input"
+                                type="number"
+                                min="1"
+                                placeholder="RPH"
+                                value={draftLimit.rph_limit}
+                                onChange={(e) => updateRateLimitDraft(sourceKey.id, model.id, "rph_limit", e.target.value)}
+                              />
+                              <input
+                                className="input"
+                                type="number"
+                                min="1"
+                                placeholder="RPD"
+                                value={draftLimit.rpd_limit}
+                                onChange={(e) => updateRateLimitDraft(sourceKey.id, model.id, "rpd_limit", e.target.value)}
+                              />
+
+                              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                                <div>COUNT {counts}</div>
+                                <div>{lastCalled}</div>
+                              </div>
+
+                              <button
+                                className="btn btn-sm btn-cyan"
+                                disabled={!dirtyLimit || savingRateLimitKey === pairKey}
+                                onClick={() => saveRateLimit(sourceKey.id, model.id)}
+                                style={{ justifyContent: "center" }}
+                              >
+                                <Icon name="save" size={12} />
+                                {savingRateLimitKey === pairKey ? "SAVING" : "SAVE"}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {keys.length > 0 && providerModels.length === 0 && (
+              <div style={{ marginTop: 16, fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-muted)" }}>
+                No models registered for this provider.
+              </div>
+            )}
           </motion.div>
         );
       })}
